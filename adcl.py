@@ -2,12 +2,66 @@ import torch
 
 
 class ADCL(torch.optim.Optimizer):
-    """Neural Network Optimizer Based on Neural Dynamic"""
+    """
+    Neural Network Optimizer Based on Neural Dynamic
 
-    def __init__(self, params, lr=1e-3, activate_fn=None, vlr_clamp=1.0, weight_decay=0.0, trapezoidal=False, omicron=1e-3):
+    Examples
+    --------
+
+    Define neural network and loss function
+
+    >>> model: torch.nn.Module
+    >>> loss_function: torch.nn.Module
+
+    Create an ADCL optimizer
+
+    >>> optimizer = ADCL(model.parameters())
+
+    Define a closure
+
+    >>> x: torch.Tensor
+    >>> y: torch.Tensor
+    >>> def closure():
+    ...     optimizer.zero_grad()
+    ...     _pred = model(x)
+    ...     if torch.isinf(_pred).any():
+    ...         raise ValueError('Training loss is diverging, please decrease the learning rate.')
+    ...     _loss = loss_function(_pred, y)
+    ...     _loss.backward()
+    ...     return _loss
+
+    Optimization step
+
+    >>> loss = optimizer.step(closure)
+
+    Now you can use ADCL just like any other optimizer in PyTorch!
+
+    """
+
+    def __init__(
+        self,
+        params,
+        lr=1e-3,
+        activation_fn=None,
+        vlr_clamp=1.0,
+        weight_decay=1e-5,
+        trapezoidal=False,
+        omicron=1e-6
+    ):
+        """
+        Initialize the ADCL optimizer.
+
+        :param params: learnable parameters
+        :param lr: time constant, similar to learning rate
+        :param activation_fn: activation function
+        :param vlr_clamp: maximum equivalent learning rate
+        :param weight_decay: weight decay (L2 penalty)
+        :param trapezoidal: whether to use trapezoidal integration
+        :param omicron: infinitesimal float used to ensure numerical stability
+        """
         super().__init__(params, defaults={
             'lr': lr,
-            'activate_fn': activate_fn,
+            'activation_fn': activation_fn,
             'vlr_clamp': vlr_clamp,
             'weight_decay': weight_decay,
             'trapezoidal': trapezoidal,
@@ -25,10 +79,10 @@ class ADCL(torch.optim.Optimizer):
             for i, p in enumerate(group['params']):
                 if p.grad is not None:
                     # calculate varying learning rate
-                    if group['activate_fn'] is None:
+                    if group['activation_fn'] is None:
                         vlr = group['lr'] * loss / (torch.sum(torch.square(p.grad)) + group['omicron'])
                     else:
-                        vlr = group['lr'] * group['activate_fn'](loss) / (torch.sum(torch.square(p.grad)) + group['omicron'])
+                        vlr = group['lr'] * group['activation_fn'](loss) / (torch.sum(torch.square(p.grad)) + group['omicron'])
 
                     # learning rate clamp
                     if vlr > group['vlr_clamp']:
