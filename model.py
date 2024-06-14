@@ -10,6 +10,16 @@ def conv_output_size(input_size, kernel_size, stride, padding, dilation=1):
 
 class StimulusClassifier(nn.Module):
     def __init__(self, num_channels, num_samples, fusion_channels, kernel_size, kernel_stride, dropout):
+        """
+        Initialize a stimulus classifier
+
+        :param num_channels: EEG channels number
+        :param num_samples: EEG samples number (i.e., time window size)
+        :param fusion_channels: output channels number of convolutional layer
+        :param kernel_size: convolutional kernel size
+        :param kernel_stride: convolutional kernel stride
+        :param dropout: dropout rate
+        """
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv1d(num_channels, fusion_channels, kernel_size, kernel_stride, 0),
@@ -22,6 +32,12 @@ class StimulusClassifier(nn.Module):
         )
 
     def forward(self, x):
+        """
+        Predict P300 signal
+
+        :param x: input tensor (batch, channel, sample)
+        :return: predictions (batch, 2)
+        """
         x = self.conv(x)
         x = self.output(x)
         return x
@@ -29,10 +45,21 @@ class StimulusClassifier(nn.Module):
 
 class CharClassifier(nn.Module):
     def __init__(self, stimulus_classifier):
+        """
+        Initialize a characters classifier
+
+        :param stimulus_classifier: a StimulusClassifier instance
+        """
         super().__init__()
         self.stimulus_classifier = stimulus_classifier
 
     def forward(self, x: torch.Tensor):
+        """
+        Predict characters
+
+        :param x: input tensor (batch, row_column, epoch, channel, sample)
+        :return: predictions (batch, 36)
+        """
         num_batch = x.size(0)
         num_epoch = x.size(2)
 
@@ -56,3 +83,6 @@ class CharClassifier(nn.Module):
 
         # (batch, 36)
         return x
+
+
+__all__ = ['StimulusClassifier', 'CharClassifier']
