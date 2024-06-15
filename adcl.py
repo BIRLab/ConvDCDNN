@@ -48,16 +48,16 @@ class ADCL(torch.optim.Optimizer):
         trapezoidal=False,
         omicron=1e-6
     ):
-        """
+        r"""
         Initialize the ADCL optimizer.
 
         :param params: learnable parameters
-        :param lr: time constant, similar to learning rate
-        :param activation_fn: activation function
-        :param vlr_clamp: maximum equivalent learning rate
-        :param weight_decay: weight decay (L2 penalty)
+        :param lr: time constant, similar to learning rate - :math:`\lambda^*`
+        :param activation_fn: activation function - :math:`\Phi(\cdot)`
+        :param vlr_clamp: maximum equivalent learning rate - :math:`\alpha_{\text{max}}`
+        :param weight_decay: weight decay (L2 penalty) - :math:`\mu`
         :param trapezoidal: whether to use trapezoidal integration
-        :param omicron: infinitesimal float used to ensure numerical stability
+        :param omicron: infinitesimal float used to ensure numerical stability - :math:`o`
         """
         super().__init__(params, defaults={
             'lr': lr,
@@ -70,7 +70,7 @@ class ADCL(torch.optim.Optimizer):
 
     def step(self, closure=None):
         if closure is None:
-            raise RuntimeError('NeuralDynamic optimizer need to pass loss through closure, please reference: "https://pytorch.org/docs/stable/optim.html#optimizer-step-closure".')
+            raise RuntimeError('ADCL optimizer need to pass loss through closure, please reference: "https://pytorch.org/docs/stable/optim.html#optimizer-step-closure".')
 
         with torch.enable_grad():
             loss = closure()
