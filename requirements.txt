@@ -2,3 +2,5 @@ torch
 h5py
 numpy
 tqdm
+tensorboard
+torcheval

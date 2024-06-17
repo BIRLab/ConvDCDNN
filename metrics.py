@@ -27,4 +27,8 @@ def stable_itr(p: np.ndarray) -> np.ndarray:
     return (60 * (np.piecewise(p, conditions, functions) + np.log2(36))) / (2.5 + 2.1 * np.arange(1, 16, 1))
 
 
-__all__ = ['stable_itr', 'itr']
+def mean_itr(acc):
+    return sum(stable_itr(acc)) / 15
+
+
+__all__ = ['stable_itr', 'itr', 'mean_itr']
