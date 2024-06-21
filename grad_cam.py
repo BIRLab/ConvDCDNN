@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 class GradCAM:
@@ -20,4 +21,10 @@ class GradCAM:
         return torch.relu(torch.sum(alpha * self.activation, self.sum_axis))
 
 
-__all__ = ['GradCAM']
+def scale(x, axis):
+    min_val = np.min(x, axis=axis, keepdims=True)
+    max_val = np.max(x, axis=axis, keepdims=True)
+    return (x - min_val) / (max_val - min_val)
+
+
+__all__ = ['GradCAM', 'scale']

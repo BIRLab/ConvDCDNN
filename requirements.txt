@@ -4,3 +4,4 @@ numpy
 tqdm
 tensorboard
 torcheval
+matplotlib

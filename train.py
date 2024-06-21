@@ -17,6 +17,9 @@ from tqdm import tqdm
 from torcheval.metrics import MulticlassAccuracy, MulticlassF1Score, Mean
 import random
 import numpy as np
+from grad_cam import GradCAM, scale
+import matplotlib.pyplot as plt
+from plot_top import plot_top
 
 
 def detect_device():
@@ -298,6 +301,54 @@ def test(opt: argparse.Namespace, test_stimulus_dataset: BCIDataset, test_char_d
     }
 
 
+def explain(opt: argparse.Namespace, test_stimulus_dataset: BCIDataset, char_model: CharClassifier):
+    model = char_model.stimulus_classifier
+    model.eval()
+
+    # read channels and coordinates from dataset
+    with h5py.File(dataset_path, 'r') as f:
+        channels = f.attrs['channels']
+        coords = f.attrs['coords']
+
+    # create dataloader
+    test_loader = DataLoader(test_stimulus_dataset, 1)
+
+    # time interest
+    cam = GradCAM(model, model.get_submodule('conv'))
+    heatmaps = []
+    for x, y in tqdm(test_loader):
+        x.requires_grad = True
+        out = model(x)
+        heatmaps.append(cam(out[:, 1]).cpu().detach().numpy())
+    fig, ax = plt.subplots(figsize=(3.5, 1.8))
+    x = np.arange(240) / 240
+    y = scale(np.vstack(heatmaps).sum(0), 0)
+    ax.plot(x, y)
+    ax.fill_between(x, y, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(opt.result_path / f"time_interest.pdf", format='pdf')
+
+    # channel interest
+    cam = GradCAM(model, model.get_submodule('conv'), 1, 2)
+    heatmaps = []
+    for x, y in tqdm(test_loader):
+        x.requires_grad = True
+        out = model(x)
+        heatmaps.append(cam(out[:, 1]).cpu().detach().numpy())
+    heatmaps = np.vstack(heatmaps).sum(0)
+    top_k = heatmaps.argsort()[:-9:-1]
+    fig, ax = plt.subplots(figsize=(3.5, 1.8))
+    ax.bar([channels[j] for j in top_k], scale(heatmaps, 0)[top_k])
+    fig.tight_layout()
+    fig.savefig(opt.result_path / f"channel_interest.pdf", format='pdf')
+
+    # top plot
+    fig, ax = plt.subplots(figsize=(3.5, 2.5))
+    plot_top(fig, ax, coords, channels, heatmaps, 300, 4, True, 1, 0.5)
+    fig.tight_layout()
+    fig.savefig(opt.result_path / f"heatmap_top.pdf", format='pdf')
+
+
 def main(opt=None):
     # parse arguments
     if opt is None:
@@ -328,14 +379,17 @@ def main(opt=None):
     char_model.to(opt.device)
     writer.add_graph(char_model, torch.rand((1, 12, 15, num_channels, num_samples)).to(opt.device))
 
-    # train stimulus models
+    # train stimulus model
     train_stimulus_classifier(opt, stimulus_model, train_stimulus_dataset, validation_stimulus_dataset, writer)
 
     # transfer stimulus classifier weights to char classifier
     char_model.stimulus_classifier.load_state_dict(torch.load(opt.result_path / 'best_f1.pth'))
 
-    # test models
+    # test model
     metric = test(opt, test_stimulus_dataset, test_char_dataset, char_model, writer)
+
+    # explain model
+    explain(opt, test_stimulus_dataset, char_model)
 
     # log hyperparameter and metric to tensorboard
     writer.add_hparams(argparse_to_dict(opt), metric)
