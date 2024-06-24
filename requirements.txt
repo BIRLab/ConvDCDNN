@@ -5,3 +5,5 @@ tqdm
 tensorboard
 torcheval
 matplotlib
+pandas
+scipy

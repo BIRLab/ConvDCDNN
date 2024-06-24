@@ -20,6 +20,7 @@ import numpy as np
 from grad_cam import GradCAM, scale
 import matplotlib.pyplot as plt
 from plot_top import plot_top
+import pandas as pd
 
 
 def detect_device():
@@ -76,7 +77,6 @@ def parse_opt():
 
     # log
     parser.add_argument('--log-dir', type=Path, default=Path('./runs'), help='tensorboard output directory')
-    parser.add_argument('--exp', type=str, help='experiment name')
     parser.add_argument('--result-path', type=Path, help='result path')
 
     # dataset
@@ -99,11 +99,10 @@ def parse_opt():
     parser.add_argument('--batch-size', type=int, default=128, help='batch size')
     parser.add_argument('--max-epoch', type=int, default=2000, help='max epoch')
     parser.add_argument('--patience', type=int, default=100, help='early stopping patience')
+    parser.add_argument('--repetition', type=int, default=100, help='repetition')
 
     # parse arguments
     opt = parser.parse_args()
-    if opt.exp is None:
-        opt.exp = new_exp_name(opt.log_dir)
 
     if opt.result_path is None:
         opt.result_path = Path('result') / opt.subject
@@ -235,10 +234,10 @@ def train_stimulus_classifier(opt: argparse.Namespace, model: StimulusClassifier
 
         # save best weight
         if test_loss < best_loss:
-            torch.save(model.state_dict(), opt.result_path / 'best_loss.pth')
+            torch.save(model.state_dict(), opt.result_path / str(opt.seed) / 'best_loss.pth')
             best_loss = test_loss
         if test_f1 > best_f1:
-            torch.save(model.state_dict(), opt.result_path / 'best_f1.pth')
+            torch.save(model.state_dict(), opt.result_path / str(opt.seed) / 'best_f1.pth')
             best_f1 = test_f1
 
         # check early stopping
@@ -326,7 +325,7 @@ def explain(opt: argparse.Namespace, test_stimulus_dataset: BCIDataset, char_mod
     ax.plot(x, y)
     ax.fill_between(x, y, alpha=0.3)
     fig.tight_layout()
-    fig.savefig(opt.result_path / f"time_interest.pdf", format='pdf')
+    fig.savefig(opt.result_path / str(opt.seed) / f"time_interest.pdf", format='pdf')
 
     # channel interest
     cam = GradCAM(model, model.get_submodule('conv'), 1, 2)
@@ -340,13 +339,13 @@ def explain(opt: argparse.Namespace, test_stimulus_dataset: BCIDataset, char_mod
     fig, ax = plt.subplots(figsize=(3.5, 1.8))
     ax.bar([channels[j] for j in top_k], scale(heatmaps, 0)[top_k])
     fig.tight_layout()
-    fig.savefig(opt.result_path / f"channel_interest.pdf", format='pdf')
+    fig.savefig(opt.result_path / str(opt.seed) / f"channel_interest.pdf", format='pdf')
 
     # top plot
     fig, ax = plt.subplots(figsize=(3.5, 2.5))
     plot_top(fig, ax, coords, channels, heatmaps, 300, 4, True, 1, 0.5)
     fig.tight_layout()
-    fig.savefig(opt.result_path / f"heatmap_top.pdf", format='pdf')
+    fig.savefig(opt.result_path / str(opt.seed) / f"heatmap_top.pdf", format='pdf')
 
 
 def main(opt=None):
@@ -357,45 +356,66 @@ def main(opt=None):
     # create directory to save result
     opt.result_path.mkdir(parents=True, exist_ok=True)
 
-    # fix random seed for reproducibility
-    set_random_seed(opt.seed)
-
     # load bci dataset
     train_stimulus_dataset, validation_stimulus_dataset, test_stimulus_dataset, test_char_dataset = create_dataset(opt)
     num_channels, num_samples = test_char_dataset.responses.shape[-2:]
 
-    # create models
-    model_args = (num_channels, num_samples, opt.fusion_channels, opt.kernel_size, opt.kernel_stride, opt.dropout)
-    stimulus_model = StimulusClassifier(*model_args)
-    if opt.model_path is not None:
-        stimulus_model.load_state_dict(torch.load(opt.model_path))
-    char_model = CharClassifier(stimulus_model)
+    # start experiment
+    experiment_result = np.zeros((opt.repetition, 15))
+    for rep in range(opt.repetition):
+        print(f'Experiment {rep + 1}')
 
-    # create log writer
-    writer = SummaryWriter(opt.log_dir / opt.exp)
+        # fix random seed for reproducibility
+        set_random_seed(opt.seed)
+        opt.seed += 1
 
-    # move to device
-    stimulus_model.to(opt.device)
-    char_model.to(opt.device)
-    writer.add_graph(char_model, torch.rand((1, 12, 15, num_channels, num_samples)).to(opt.device))
+        # prepare result directory
+        (opt.result_path / str(opt.seed)).mkdir(parents=True, exist_ok=True)
 
-    # train stimulus model
-    train_stimulus_classifier(opt, stimulus_model, train_stimulus_dataset, validation_stimulus_dataset, writer)
+        # create models
+        model_args = (num_channels, num_samples, opt.fusion_channels, opt.kernel_size, opt.kernel_stride, opt.dropout)
+        stimulus_model = StimulusClassifier(*model_args)
+        if opt.model_path is not None:
+            stimulus_model.load_state_dict(torch.load(opt.model_path))
+        char_model = CharClassifier(stimulus_model)
 
-    # transfer stimulus classifier weights to char classifier
-    char_model.stimulus_classifier.load_state_dict(torch.load(opt.result_path / 'best_f1.pth'))
+        # create log writer
+        writer = SummaryWriter(opt.log_dir / new_exp_name(opt.log_dir))
 
-    # test model
-    metric = test(opt, test_stimulus_dataset, test_char_dataset, char_model, writer)
+        # move to device
+        stimulus_model.to(opt.device)
+        char_model.to(opt.device)
+        writer.add_graph(char_model, torch.rand((1, 12, 15, num_channels, num_samples)).to(opt.device))
 
-    # explain model
-    explain(opt, test_stimulus_dataset, char_model)
+        # train stimulus model
+        train_stimulus_classifier(opt, stimulus_model, train_stimulus_dataset, validation_stimulus_dataset, writer)
 
-    # log hyperparameter and metric to tensorboard
-    writer.add_hparams(argparse_to_dict(opt), metric)
+        # transfer stimulus classifier weights to char classifier
+        char_model.stimulus_classifier.load_state_dict(torch.load(opt.result_path / str(opt.seed) / 'best_f1.pth'))
 
-    # finished
-    writer.close()
+        # test model
+        metric = test(opt, test_stimulus_dataset, test_char_dataset, char_model, writer)
+        for i in range(15):
+            experiment_result[rep, i] = metric[f'epoch{i + 1}']
+
+        # explain model
+        explain(opt, test_stimulus_dataset, char_model)
+
+        # log hyperparameter and metric to tensorboard
+        writer.add_hparams(argparse_to_dict(opt), metric)
+
+        # finished
+        writer.close()
+
+    # save experiment result
+    experiment_result = pd.DataFrame(
+        data=experiment_result,
+        columns=[f'epoch{i + 1}' for i in range(15)]
+    )
+    experiment_result.to_csv(opt.result_path / 'experiment_result.csv', index=False)
+
+    # best result
+    print(experiment_result.max())
 
 
 if __name__ == '__main__':

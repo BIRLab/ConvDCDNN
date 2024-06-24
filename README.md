@@ -4,8 +4,6 @@ Open source code for paper *Convolutional Dynamically Convergent Differential Ne
 
 ---
 
-We have released the implementation of our neural network and ADCL algorithm. For more details, please refer to the `model.py` and `adcl.py` files.
-
 ![](./docs/static/train.svg)
 
 ---
@@ -30,6 +28,10 @@ cat data/dataset.hdf5.part_* > data/dataset.hdf5
 
 Our preprocessing is fairly straightforward, consisting only of band-pass filtering and z-score normalization. For details, please refer to the [`preprocess.py`](preprocess.py) file.
 
+## Model
+
+Please refer to the [`model.py`](model.py).
+
 ## Training
 
 We use the popular [PyTorch](https://pytorch.org/) framework for training. To utilize PyTorch's standard training workflow, we extend the `torch.utils.data.dataset.Dataset` class and use `torch.utils.data.DataLoader` to load the datasets. For details, please refer to the [`dataset.py`](dataset.py) file.
@@ -43,6 +45,10 @@ tensorboard --logdir=runs
 The training results will be saved in the `result` folder, and you can also manually specify the folder using the `--result-path` parameter.
 
 For details on the training process, please refer to [`train.py`](train.py).
+
+```bash
+python train.py --help
+```
 
 ## Explainability
 
