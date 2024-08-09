@@ -75,8 +75,8 @@ class ADCL(torch.optim.Optimizer):
         with torch.enable_grad():
             loss = closure()
 
-        for j, group in enumerate(self.param_groups):
-            for i, p in enumerate(group['params']):
+        for group in self.param_groups:
+            for p in group['params']:
                 if p.grad is not None:
                     # calculate varying learning rate
                     if group['activation_fn'] is None:
